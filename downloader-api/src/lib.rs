@@ -7,6 +7,7 @@ use serde_json::{json, Map, Value};
 use serde_this_or_that::as_u64;
 use std::collections::HashMap;
 use std::error::Error as StdError;
+use std::fmt::Display;
 use std::time::SystemTime;
 
 const ACCESS_TOKEN_URL: &str = "https://www.sidefx.com/oauth2/application_token";
@@ -29,6 +30,14 @@ struct Inner {
 pub struct ApiError {
     inner: Box<Inner>,
 }
+
+impl Display for ApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("TODO")
+    }
+}
+
+impl StdError for ApiError {}
 
 impl ApiError {
     pub(crate) fn new<E>(kind: Kind, source: Option<E>) -> ApiError
@@ -58,7 +67,7 @@ pub struct AccessToken {
 }
 
 #[non_exhaustive]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Copy, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum Product {
     Houdini,
@@ -72,6 +81,20 @@ pub enum Platform {
     Macos,
     #[serde(rename = "macosx_arm64")]
     MacosxArm64,
+}
+
+impl Platform {
+    fn from_build_str(platform: &str) -> Self {
+        if platform.starts_with("linux") {
+            Platform::Linux
+        } else if platform.starts_with("win64") {
+            Platform::Win64
+        } else if platform.starts_with("macosx_x86") {
+            Platform::Macos
+        } else {
+            Platform::MacosxArm64
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -93,8 +116,13 @@ impl ListBuildsParms {
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
-struct DownloadParms {}
+#[derive(Debug, Serialize, Deserialize)]
+struct DownloadParms {
+    product: Product,
+    platform: Platform,
+    version: String,
+    build: u64,
+}
 
 #[derive(Debug)]
 enum EndPoint {
@@ -115,17 +143,6 @@ impl EndPoint {
             ),
         }
     }
-}
-
-pub fn call_api(client: &Client, access_token: &str, endpoint: EndPoint) -> reqwest::Result<Value> {
-    let (method, parms) = endpoint.method_and_parms();
-    let parms = json!([method, [], parms]).to_string();
-    client
-        .post(ENDPOINT_URL)
-        .bearer_auth(access_token)
-        .form(&[("json", parms)])
-        .send()?
-        .json()
 }
 
 fn get_access_token_and_expiry_time(
@@ -160,12 +177,31 @@ impl Downloader {
     }
 
     pub fn list_builds(&self, parameters: ListBuildsParms) -> Result<Vec<Build>, ApiError> {
-        let json_value = call_api(
-            &self.client,
-            &self.token.access_token,
-            EndPoint::ListBuilds(parameters),
-        )?;
+        let json_value = self.call_api(EndPoint::ListBuilds(parameters))?;
         serde_json::from_value(json_value).map_err(|e| ApiError::new(Kind::Decode, Some(e)))
+    }
+
+    pub fn get_build_url(&self, build: &Build) -> Result<BuildUrl, ApiError> {
+        let parms = DownloadParms {
+            product: build.product,
+            platform: Platform::from_build_str(&build.platform),
+            version: build.version.clone(),
+            build: build.build,
+        };
+        let json_value = self.call_api(EndPoint::Download(parms))?;
+
+        serde_json::from_value(json_value).map_err(|e| ApiError::new(Kind::Decode, Some(e)))
+    }
+
+    fn call_api(&self, endpoint: EndPoint) -> reqwest::Result<Value> {
+        let (method, parms) = endpoint.method_and_parms();
+        let parms = json!([method, [], parms]).to_string();
+        self.client
+            .post(ENDPOINT_URL)
+            .bearer_auth(&self.token.access_token)
+            .form(&[("json", parms)])
+            .send()?
+            .json()
     }
 }
 
@@ -179,4 +215,11 @@ pub struct Build {
     release: String,
     status: String,
     version: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BuildUrl {
+    pub download_url: String,
+    pub filename: String,
+    pub hash: String,
 }
