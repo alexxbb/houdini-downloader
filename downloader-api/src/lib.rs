@@ -15,8 +15,9 @@ const ENDPOINT_URL: &str = "https://www.sidefx.com/api";
 
 pub(crate) type BoxError = Box<dyn StdError + Send + Sync>;
 
-#[derive(Debug)]
-pub(crate) enum Kind {
+#[derive(Debug, Eq, PartialEq)]
+pub enum Kind {
+    AuthError,
     Request,
     Decode,
 }
@@ -31,9 +32,19 @@ pub struct ApiError {
     inner: Box<Inner>,
 }
 
+impl ApiError {
+    pub fn is_authorization_error(&self) -> bool {
+        self.inner.kind == Kind::AuthError
+    }
+}
+
 impl Display for ApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("TODO")
+        write!(
+            f,
+            "TODO. Kind: {:?}, e: {:?} ",
+            self.inner.kind, self.inner.source
+        )
     }
 }
 
@@ -100,8 +111,8 @@ impl Platform {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ListBuildsParms {
     pub product: Product,
-    pub version: String,
     pub platform: Platform,
+    pub version: String,
     pub only_production: bool,
 }
 
@@ -109,8 +120,8 @@ impl ListBuildsParms {
     pub fn new() -> Self {
         ListBuildsParms {
             product: Product::Houdini,
-            version: "19.5".to_string(),
             platform: Platform::Linux,
+            version: "19.5".to_string(),
             only_production: true,
         }
     }
@@ -149,12 +160,28 @@ fn get_access_token_and_expiry_time(
     client: &Client,
     user_id: &str,
     user_secret: &str,
-) -> reqwest::Result<AccessToken> {
-    let mut token: AccessToken = client
+) -> Result<AccessToken, ApiError> {
+    let resp = client
         .post(ACCESS_TOKEN_URL)
         .basic_auth(user_id, Some(user_secret))
-        .send()?
-        .json()?;
+        .send()?;
+
+    if !resp.status().is_success() {
+        match resp.status() {
+            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
+                return Err(ApiError::new(Kind::AuthError, None::<BoxError>));
+            }
+            error_status => {
+                return Err(ApiError::new(
+                    Kind::Request,
+                    Some(format!("Request error code: {error_status:?}")),
+                ))
+            }
+        }
+    }
+
+    let mut token: AccessToken = resp.json()?;
+
     token.expiry_time = SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -208,13 +235,19 @@ impl Downloader {
 #[derive(Debug, Deserialize)]
 pub struct Build {
     #[serde(deserialize_with = "as_u64")]
-    build: u64,
-    date: String, // TODO: Use chrono
-    product: Product,
-    platform: String,
-    release: String,
-    status: String,
-    version: String,
+    pub build: u64,
+    pub date: String, // TODO: Use chrono
+    pub product: Product,
+    pub platform: String,
+    pub release: String,
+    pub status: String,
+    pub version: String,
+}
+
+impl Build {
+    pub fn full_version(&self) -> String {
+        format!("{}.{}", self.version, self.build)
+    }
 }
 
 #[derive(Debug, Deserialize)]
