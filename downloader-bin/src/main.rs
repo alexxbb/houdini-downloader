@@ -79,14 +79,7 @@ fn main() -> Result<()> {
             production,
             version,
         } => {
-            let downloader = match Downloader::new(user_id, user_secret) {
-                Ok(d) => d,
-                Err(e) if e.is_authorization_error() => {
-                    return Err(anyhow!("Could not authorize, check user credentials."));
-                }
-                Err(e) => anyhow::bail!(e),
-            };
-
+            let downloader = Downloader::new(user_id, user_secret)?;
             let list_parms = ListBuildsParms {
                 product: args.product.into(),
                 platform: args.platform.into(),

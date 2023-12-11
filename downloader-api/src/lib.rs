@@ -40,11 +40,14 @@ impl ApiError {
 
 impl Display for ApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "TODO. Kind: {:?}, e: {:?} ",
-            self.inner.kind, self.inner.source
-        )
+        let msg = match &self.inner.source {
+            None => format!(
+                "Error Kind: {:?}. No error source available",
+                self.inner.kind
+            ),
+            Some(err) => err.to_string(),
+        };
+        f.write_str(&msg)
     }
 }
 
@@ -169,7 +172,10 @@ fn get_access_token_and_expiry_time(
     if !resp.status().is_success() {
         match resp.status() {
             StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
-                return Err(ApiError::new(Kind::AuthError, None::<BoxError>));
+                return Err(ApiError::new(
+                    Kind::AuthError,
+                    Some("Could not authorize, check user credentials.".to_string()),
+                ));
             }
             error_status => {
                 return Err(ApiError::new(
