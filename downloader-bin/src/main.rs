@@ -65,7 +65,8 @@ impl From<PlatformArg> for Platform {
     }
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let args: App = App::parse();
     if args.user_id.is_none() || args.user_secret.is_none() {
         return Err(anyhow!("SESI_USER_ID and SESI_USER_SECRET are required"));
@@ -81,7 +82,7 @@ fn main() -> Result<()> {
             include_daily_builds,
             version,
         } => {
-            let client = SesiClient::new(user_id, user_secret)?;
+            let client = SesiClient::new(user_id, user_secret).await?;
             let list_parms = ListBuildsParms {
                 product: args.product.into(),
                 platform: args.platform.into(),
@@ -89,7 +90,12 @@ fn main() -> Result<()> {
                 only_production: !include_daily_builds,
             };
             let mut stdout = std::io::stdout().lock();
-            for (i, build) in client.list_builds(list_parms)?.into_iter().enumerate() {
+            for (i, build) in client
+                .list_builds(list_parms)
+                .await?
+                .into_iter()
+                .enumerate()
+            {
                 let status = if build.status == "bad" {
                     build.status.color(AnsiColors::Red)
                 } else {

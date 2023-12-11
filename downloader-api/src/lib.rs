@@ -1,6 +1,6 @@
 #![allow(unused)]
 #![allow(dead_code)]
-use reqwest::blocking::Client as HttpClient;
+use reqwest::Client as HttpClient;
 use reqwest::{StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -159,7 +159,7 @@ impl EndPoint {
     }
 }
 
-fn get_access_token_and_expiry_time(
+async fn get_access_token_and_expiry_time(
     client: &HttpClient,
     user_id: &str,
     user_secret: &str,
@@ -167,7 +167,8 @@ fn get_access_token_and_expiry_time(
     let resp = client
         .post(ACCESS_TOKEN_URL)
         .basic_auth(user_id, Some(user_secret))
-        .send()?;
+        .send()
+        .await?;
 
     if !resp.status().is_success() {
         match resp.status() {
@@ -186,7 +187,7 @@ fn get_access_token_and_expiry_time(
         }
     }
 
-    let mut token: AccessToken = resp.json()?;
+    let mut token: AccessToken = resp.json().await?;
 
     token.expiry_time = SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -203,38 +204,61 @@ pub struct SesiClient {
 }
 
 impl SesiClient {
-    pub fn new(user_id: &str, user_secret: &str) -> Result<Self, ApiError> {
+    pub async fn new(user_id: &str, user_secret: &str) -> Result<Self, ApiError> {
         let client = HttpClient::new();
-        let token = get_access_token_and_expiry_time(&client, user_id, user_secret)?;
+        let token = get_access_token_and_expiry_time(&client, user_id, user_secret).await?;
         Ok(SesiClient { token, client })
     }
 
-    pub fn list_builds(&self, parameters: ListBuildsParms) -> Result<Vec<Build>, ApiError> {
-        let json_value = self.call_api(EndPoint::ListBuilds(parameters))?;
+    pub async fn list_builds(&self, parameters: ListBuildsParms) -> Result<Vec<Build>, ApiError> {
+        let json_value = self.call_api(EndPoint::ListBuilds(parameters)).await?;
         serde_json::from_value(json_value).map_err(|e| ApiError::new(Kind::Decode, Some(e)))
     }
 
-    pub fn get_build_url(&self, build: &Build) -> Result<BuildUrl, ApiError> {
+    pub async fn download_build(
+        &self,
+        product: Product,
+        platform: Platform,
+        version: &str,
+        build: u64,
+    ) -> Result<(), ApiError> {
+        let json_value = self
+            .call_api(EndPoint::Download(DownloadParms {
+                product,
+                platform,
+                version: version.to_string(),
+                build,
+            }))
+            .await?;
+        let build_url: BuildUrl =
+            serde_json::from_value(json_value).map_err(|e| ApiError::new(Kind::Decode, Some(e)))?;
+
+        Ok(())
+    }
+
+    pub async fn get_build_url(&self, build: &Build) -> Result<BuildUrl, ApiError> {
         let parms = DownloadParms {
             product: build.product,
             platform: Platform::from_build_str(&build.platform),
             version: build.version.clone(),
             build: build.build,
         };
-        let json_value = self.call_api(EndPoint::Download(parms))?;
+        let json_value = self.call_api(EndPoint::Download(parms)).await?;
 
         serde_json::from_value(json_value).map_err(|e| ApiError::new(Kind::Decode, Some(e)))
     }
 
-    fn call_api(&self, endpoint: EndPoint) -> reqwest::Result<Value> {
+    async fn call_api(&self, endpoint: EndPoint) -> reqwest::Result<Value> {
         let (method, parms) = endpoint.method_and_parms();
         let parms = json!([method, [], parms]).to_string();
         self.client
             .post(ENDPOINT_URL)
             .bearer_auth(&self.token.access_token)
             .form(&[("json", parms)])
-            .send()?
+            .send()
+            .await?
             .json()
+            .await
     }
 }
 
@@ -261,4 +285,5 @@ pub struct BuildUrl {
     pub download_url: String,
     pub filename: String,
     pub hash: String,
+    pub size: u64,
 }
