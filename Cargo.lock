@@ -381,6 +381,7 @@ dependencies = [
  "anyhow",
  "clap",
  "downloader-api",
+ "owo-colors",
 ]
 
 [[package]]
@@ -637,6 +638,12 @@ dependencies = [
  "pkg-config",
  "vcpkg",
 ]
+
+[[package]]
+name = "owo-colors"
+version = "4.0.0-rc.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70ee2ea482b8aca28901052bbde50bbe71c74b5ae0260d22a9e2f63cd0521b4a"
 
 [[package]]
 name = "percent-encoding"

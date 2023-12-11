@@ -1,6 +1,6 @@
 #![allow(unused)]
 #![allow(dead_code)]
-use reqwest::blocking::Client;
+use reqwest::blocking::Client as HttpClient;
 use reqwest::{StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -160,7 +160,7 @@ impl EndPoint {
 }
 
 fn get_access_token_and_expiry_time(
-    client: &Client,
+    client: &HttpClient,
     user_id: &str,
     user_secret: &str,
 ) -> Result<AccessToken, ApiError> {
@@ -197,16 +197,16 @@ fn get_access_token_and_expiry_time(
     Ok(token)
 }
 
-pub struct Downloader {
+pub struct SesiClient {
     token: AccessToken,
-    client: Client,
+    client: HttpClient,
 }
 
-impl Downloader {
+impl SesiClient {
     pub fn new(user_id: &str, user_secret: &str) -> Result<Self, ApiError> {
-        let client = Client::new();
+        let client = HttpClient::new();
         let token = get_access_token_and_expiry_time(&client, user_id, user_secret)?;
-        Ok(Downloader { token, client })
+        Ok(SesiClient { token, client })
     }
 
     pub fn list_builds(&self, parameters: ListBuildsParms) -> Result<Vec<Build>, ApiError> {

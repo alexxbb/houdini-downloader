@@ -2,7 +2,9 @@
 #![allow(dead_code)]
 use anyhow::{anyhow, Result};
 use clap::{ArgAction, CommandFactory, Parser, Subcommand, ValueEnum};
-use downloader_api::{Downloader, ListBuildsParms, Platform, Product};
+use downloader_api::{ListBuildsParms, Platform, Product, SesiClient};
+use owo_colors::{AnsiColors, OwoColorize};
+use std::io::Write;
 
 #[derive(Debug, Parser)]
 struct App {
@@ -23,8 +25,8 @@ enum Commands {
     Get,
     List {
         /// List only production builds.
-        #[arg(short, long, default_value_t = true)]
-        production: bool,
+        #[arg(short, long, default_value_t = false)]
+        include_daily_builds: bool,
         /// Product version [e.g. 19.5]
         #[arg(short, long)]
         version: String,
@@ -76,37 +78,35 @@ fn main() -> Result<()> {
     match args.commands {
         Commands::Get => {}
         Commands::List {
-            production,
+            include_daily_builds,
             version,
         } => {
-            let downloader = Downloader::new(user_id, user_secret)?;
+            let client = SesiClient::new(user_id, user_secret)?;
             let list_parms = ListBuildsParms {
                 product: args.product.into(),
                 platform: args.platform.into(),
                 version,
-                only_production: production,
+                only_production: !include_daily_builds,
             };
-            for build in downloader.list_builds(list_parms).unwrap() {
-                println!(
-                    "Build date: {}, version: {}",
+            let mut stdout = std::io::stdout().lock();
+            for (i, build) in client.list_builds(list_parms)?.into_iter().enumerate() {
+                let status = if build.status == "bad" {
+                    build.status.color(AnsiColors::Red)
+                } else {
+                    build.status.color(AnsiColors::Green)
+                };
+                writeln!(
+                    stdout,
+                    "{i:>2}. Build date: {}, version: {}, status: {}, release: {}",
                     build.date,
-                    build.full_version()
-                )
+                    build.full_version(),
+                    status,
+                    build.release
+                );
             }
+            drop(stdout);
         }
     }
 
     Ok(())
-    // let builds = downloader.list_builds(ListBuildsParms {
-    //     product: Product::Houdini,
-    //     version: "19.5".to_string(),
-    //     platform: Platform::Linux,
-    //     only_production: true,
-    // })?;
-    // let res = downloader.get_build_url(&builds[0])?;
-    // dbg!(res.hash);
-    // // for b in builds {
-    // //     dbg!(b);
-    // // }
-    // Ok(())
 }
