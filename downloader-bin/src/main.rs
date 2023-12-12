@@ -1,6 +1,6 @@
 #![allow(unused)]
 #![allow(dead_code)]
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use clap::{ArgAction, CommandFactory, Parser, Subcommand, ValueEnum};
 use dialoguer::{theme::ColorfulTheme, Confirm};
 use downloader_api::{ListBuildsParms, Platform, Product, SesiClient};
@@ -98,7 +98,7 @@ async fn main() -> Result<()> {
     });
     let args: App = App::parse();
     if args.user_id.is_none() || args.user_secret.is_none() {
-        return Err(anyhow!("SESI_USER_ID and SESI_USER_SECRET are required"));
+        bail!("SESI_USER_ID and SESI_USER_SECRET are required");
     }
 
     // None variants were checked above
@@ -121,7 +121,7 @@ async fn main() -> Result<()> {
             let filename = &build_info.filename;
             let output = output_dir.join(filename);
             if !overwrite && output.exists() {
-                anyhow::bail!("File already downloaded: {}", output.to_string_lossy());
+                bail!("File already downloaded: {}", output.to_string_lossy());
             }
             if !auto_confirm {
                 let confirmation = Confirm::with_theme(&ColorfulTheme::default())
@@ -133,18 +133,32 @@ async fn main() -> Result<()> {
                     _ => {}
                 }
             }
-            let response = reqwest::get(build_info.download_url).await?;
+            let response = reqwest::get(build_info.download_url)
+                .await
+                .context("Could not send GET download request")?;
             let mut stream = response.bytes_stream();
-            let pb = indicatif::ProgressBar::new(build_info.size >> 10);
-            // let mut stream = pb.wrap_stream(stream);
-            let mut file = tokio::fs::File::create(&output).await?;
+            let pb = indicatif::ProgressBar::new(build_info.size);
+            pb.set_style(
+                ProgressStyle::default_bar()
+                    .template(
+                        "{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] \
+                            {bytes}/{total_bytes} ({binary_bytes_per_sec}, {eta})",
+                    )?
+                    .progress_chars("#>-"),
+            );
+            pb.set_message(format!("Downloading {}", filename));
+            let mut file = tokio::fs::File::create(&output)
+                .await
+                .context("Could not create file to save")?;
             while let Some(chunk) = stream.next().await {
-                let bytes = chunk?;
-                file.write_all(&bytes).await?;
-                pb.inc(bytes.len() as u64 >> 10);
+                if let Ok(bytes) = chunk {
+                    file.write_all(&bytes)
+                        .await
+                        .context("Error writing to file")?;
+                    pb.inc(bytes.len() as u64);
+                }
             }
-            pb.finish();
-            println!("Downloaded: {}", output.to_string_lossy());
+            pb.finish_with_message(format!("Downloaded: {}", output.to_string_lossy()));
         }
         Commands::List {
             include_daily_builds,

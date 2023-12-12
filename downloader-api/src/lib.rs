@@ -173,20 +173,16 @@ async fn get_access_token_and_expiry_time(
         .await?;
 
     if !resp.status().is_success() {
-        match resp.status() {
-            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
-                return Err(ApiError::new(
-                    Kind::AuthError,
-                    Some("Could not authorize, check user credentials.".to_string()),
-                ));
-            }
-            error_status => {
-                return Err(ApiError::new(
-                    Kind::Request,
-                    Some(format!("Request error code: {error_status:?}")),
-                ))
-            }
-        }
+        return match resp.status() {
+            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => Err(ApiError::new(
+                Kind::AuthError,
+                Some("Could not authorize, check user credentials.".to_string()),
+            )),
+            error_status => Err(ApiError::new(
+                Kind::Request,
+                Some(format!("Request error code: {error_status:?}")),
+            )),
+        };
     }
 
     let mut token: AccessToken = resp.json().await?;
