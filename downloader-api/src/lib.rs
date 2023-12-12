@@ -1,5 +1,6 @@
 #![allow(unused)]
 #![allow(dead_code)]
+// pub use futures_util::{Stream, StreamExt};
 use reqwest::Client as HttpClient;
 use reqwest::{StatusCode, Url};
 use serde::{Deserialize, Serialize};
@@ -115,6 +116,7 @@ impl Platform {
 pub struct ListBuildsParms {
     pub product: Product,
     pub platform: Platform,
+    // TODO: Support version list
     pub version: String,
     pub only_production: bool,
 }
@@ -210,43 +212,55 @@ impl SesiClient {
         Ok(SesiClient { token, client })
     }
 
-    pub async fn list_builds(&self, parameters: ListBuildsParms) -> Result<Vec<Build>, ApiError> {
-        let json_value = self.call_api(EndPoint::ListBuilds(parameters)).await?;
-        serde_json::from_value(json_value).map_err(|e| ApiError::new(Kind::Decode, Some(e)))
-    }
-
-    pub async fn download_build(
+    pub async fn list_builds(
         &self,
         product: Product,
         platform: Platform,
-        version: &str,
-        build: u64,
-    ) -> Result<(), ApiError> {
+        version: impl Into<String>,
+        only_production: bool,
+    ) -> Result<Vec<Build>, ApiError> {
         let json_value = self
-            .call_api(EndPoint::Download(DownloadParms {
+            .call_api(EndPoint::ListBuilds(ListBuildsParms {
                 product,
                 platform,
-                version: version.to_string(),
-                build,
+                version: version.into(),
+                only_production,
             }))
             .await?;
-        let build_url: BuildUrl =
-            serde_json::from_value(json_value).map_err(|e| ApiError::new(Kind::Decode, Some(e)))?;
-
-        Ok(())
+        serde_json::from_value(json_value).map_err(|e| ApiError::new(Kind::Decode, Some(e)))
     }
 
-    pub async fn get_build_url(&self, build: &Build) -> Result<BuildUrl, ApiError> {
+    pub async fn get_download_url(
+        &self,
+        product: Product,
+        platform: Platform,
+        version: impl Into<String>,
+        build: u64,
+    ) -> Result<BuildUrl, ApiError> {
         let parms = DownloadParms {
-            product: build.product,
-            platform: Platform::from_build_str(&build.platform),
-            version: build.version.clone(),
-            build: build.build,
+            product,
+            platform,
+            version: version.into(),
+            build,
         };
         let json_value = self.call_api(EndPoint::Download(parms)).await?;
 
         serde_json::from_value(json_value).map_err(|e| ApiError::new(Kind::Decode, Some(e)))
     }
+
+    // pub async fn download_stream(
+    //     &self,
+    //     product: Product,
+    //     platform: Platform,
+    //     version: impl Into<String>,
+    //     build: u64,
+    // ) -> Result<impl Stream<Item = reqwest::Result<Bytes>>, ApiError> {
+    //     let url = self
+    //         .get_download_url(product, platform, version, build)
+    //         .await?;
+    //     let response = self.client.get(url.download_url).send().await?;
+    //     Ok(response.bytes_stream())
+    // }
 
     async fn call_api(&self, endpoint: EndPoint) -> reqwest::Result<Value> {
         let (method, parms) = endpoint.method_and_parms();

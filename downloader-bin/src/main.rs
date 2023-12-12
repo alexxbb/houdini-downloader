@@ -3,8 +3,11 @@
 use anyhow::{anyhow, Result};
 use clap::{ArgAction, CommandFactory, Parser, Subcommand, ValueEnum};
 use downloader_api::{ListBuildsParms, Platform, Product, SesiClient};
+use futures_util::StreamExt;
 use owo_colors::{AnsiColors, OwoColorize};
+use reqwest;
 use std::io::Write;
+use tokio::io::AsyncWriteExt;
 
 #[derive(Debug, Parser)]
 struct App {
@@ -22,7 +25,15 @@ struct App {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    Get,
+    Get {
+        /// Product version [e.g. 19.5]
+        #[arg(short, long)]
+        version: String,
+
+        /// Product build number
+        #[arg(short, long)]
+        build: u64,
+    },
     List {
         /// List only production builds.
         #[arg(short, long, default_value_t = false)]
@@ -65,7 +76,7 @@ impl From<PlatformArg> for Platform {
     }
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let args: App = App::parse();
     if args.user_id.is_none() || args.user_secret.is_none() {
@@ -76,22 +87,37 @@ async fn main() -> Result<()> {
     let user_id = args.user_id.as_deref().unwrap();
     let user_secret = args.user_secret.as_deref().unwrap();
 
+    let client = SesiClient::new(user_id, user_secret).await?;
+
     match args.commands {
-        Commands::Get => {}
+        Commands::Get { version, build } => {
+            let build_info = client
+                .get_download_url(args.product.into(), args.platform.into(), version, build)
+                .await?;
+            let response = reqwest::get(build_info.download_url).await?;
+            let mut stream = response.bytes_stream();
+            let mut file = tokio::fs::File::create("c:/Temp/houdini-install.exe").await?;
+            let total = build_info.size as usize;
+            let mut downloaded: usize = 0;
+            while let Some(item) = stream.next().await {
+                let chunk = item?;
+                downloaded += chunk.len();
+                file.write_all(&chunk).await?;
+                println!("Downloaded {downloaded}/{total}")
+            }
+        }
         Commands::List {
             include_daily_builds,
             version,
         } => {
-            let client = SesiClient::new(user_id, user_secret).await?;
-            let list_parms = ListBuildsParms {
-                product: args.product.into(),
-                platform: args.platform.into(),
-                version,
-                only_production: !include_daily_builds,
-            };
             let mut stdout = std::io::stdout().lock();
             for (i, build) in client
-                .list_builds(list_parms)
+                .list_builds(
+                    args.product.into(),
+                    args.platform.into(),
+                    version,
+                    !include_daily_builds,
+                )
                 .await?
                 .into_iter()
                 .enumerate()
