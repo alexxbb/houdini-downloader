@@ -6,6 +6,7 @@ use dialoguer::{theme::ColorfulTheme, Confirm};
 use downloader_api::{ListBuildsParms, Platform, Product, SesiClient};
 use futures_util::StreamExt;
 use indicatif::ProgressStyle;
+use md5::{Digest, Md5};
 use owo_colors::{AnsiColors, OwoColorize};
 use reqwest;
 use std::io::Write;
@@ -150,15 +151,25 @@ async fn main() -> Result<()> {
             let mut file = tokio::fs::File::create(&output)
                 .await
                 .context("Could not create file to save")?;
+            let mut hash = Md5::new();
             while let Some(chunk) = stream.next().await {
                 if let Ok(bytes) = chunk {
                     file.write_all(&bytes)
                         .await
                         .context("Error writing to file")?;
+                    hash.update(&bytes);
                     pb.inc(bytes.len() as u64);
                 }
             }
             pb.finish_with_message(format!("Downloaded: {}", output.to_string_lossy()));
+            let downloaded_bytes_hash = hex::encode(&hash.finalize()[..]);
+            if (downloaded_bytes_hash != build_info.hash) {
+                eprintln!(
+                    "{}",
+                    "[warning]: Downloaded file hash is different from the build hash"
+                        .color(AnsiColors::Red)
+                )
+            }
         }
         Commands::List {
             include_daily_builds,
