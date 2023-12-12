@@ -86,6 +86,8 @@ pub struct AccessToken {
 #[serde(rename_all = "lowercase")]
 pub enum Product {
     Houdini,
+    #[serde(rename = "houdini-launcher")]
+    HoudiniLauncher,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

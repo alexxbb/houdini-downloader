@@ -17,9 +17,9 @@ use tokio::io::AsyncWriteExt;
 struct App {
     #[command(subcommand)]
     commands: Commands,
-    #[arg(long, global = true, env = "SESI_USER_ID")]
+    #[arg(long, global = true, env = "SESI_USER_ID", hide_env_values = true)]
     user_id: Option<String>,
-    #[arg(long, global = true, env = "SESI_USER_SECRET")]
+    #[arg(long, global = true, env = "SESI_USER_SECRET", hide_env_values = true)]
     user_secret: Option<String>,
     #[arg(long, global = true, value_enum, default_value_t = ProductArg::Houdini)]
     product: ProductArg,
@@ -51,7 +51,7 @@ enum Commands {
         overwrite: bool,
     },
     List {
-        /// List only production builds.
+        /// By default, only production builds are listed.
         #[arg(short, long, default_value_t = false)]
         include_daily_builds: bool,
         /// Product version [e.g. 19.5]
@@ -63,6 +63,7 @@ enum Commands {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
 enum ProductArg {
     Houdini,
+    HoudiniLauncher,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
@@ -77,6 +78,7 @@ impl From<ProductArg> for Product {
     fn from(arg: ProductArg) -> Self {
         match arg {
             ProductArg::Houdini => Product::Houdini,
+            ProductArg::HoudiniLauncher => Product::HoudiniLauncher,
         }
     }
 }
@@ -194,8 +196,9 @@ async fn main() -> Result<()> {
                 };
                 writeln!(
                     stdout,
-                    "{i:>2}. Build date: {}, version: {}, status: {}, release: {}",
+                    "{i:>2}. Date: {}, Platform: {}, Version: {}, Status: {}, Release: {}",
                     build.date,
+                    build.platform,
                     build.full_version(),
                     status,
                     build.release
