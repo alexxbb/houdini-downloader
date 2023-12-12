@@ -11,6 +11,8 @@ tokio = { version = "1.35.0", features = ["rt", "macros"] }
 downloader-api = {path = "../downloader-api"}
 futures-util = "0.3.29"
 dialoguer = "0.11.0"
+indicatif = { version = "0.17.7", features = ["tokio", "futures"] }
 reqwest = { version = "0.11.22", features = ["stream"] }
 anyhow = "1.0.75"
 owo-colors = "4.0.0-rc.1"
+ctrlc = { version = "3.4.1"}

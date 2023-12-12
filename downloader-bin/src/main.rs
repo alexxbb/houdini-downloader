@@ -2,12 +2,14 @@
 #![allow(dead_code)]
 use anyhow::{anyhow, Result};
 use clap::{ArgAction, CommandFactory, Parser, Subcommand, ValueEnum};
-use dialoguer::Confirm;
+use dialoguer::{theme::ColorfulTheme, Confirm};
 use downloader_api::{ListBuildsParms, Platform, Product, SesiClient};
 use futures_util::StreamExt;
+use indicatif::ProgressStyle;
 use owo_colors::{AnsiColors, OwoColorize};
 use reqwest;
 use std::io::Write;
+use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
 
 #[derive(Debug, Parser)]
@@ -31,9 +33,21 @@ enum Commands {
         #[arg(short, long)]
         version: String,
 
-        /// Product build number
+        /// Product build number.
         #[arg(short, long)]
         build: u64,
+
+        /// Directory to save the downloaded file.
+        #[arg(short, long)]
+        output_dir: PathBuf,
+
+        /// Skip download confirmation question.
+        #[arg(short, long)]
+        auto_confirm: bool,
+
+        /// Overwrite if file exists in the output directory.
+        #[arg(long)]
+        overwrite: bool,
     },
     List {
         /// List only production builds.
@@ -79,6 +93,9 @@ impl From<PlatformArg> for Platform {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
+    ctrlc::set_handler(move || {
+        std::process::exit(0);
+    });
     let args: App = App::parse();
     if args.user_id.is_none() || args.user_secret.is_none() {
         return Err(anyhow!("SESI_USER_ID and SESI_USER_SECRET are required"));
@@ -91,30 +108,43 @@ async fn main() -> Result<()> {
     let client = SesiClient::new(user_id, user_secret).await?;
 
     match args.commands {
-        Commands::Get { version, build } => {
+        Commands::Get {
+            version,
+            build,
+            output_dir,
+            auto_confirm,
+            overwrite,
+        } => {
             let build_info = client
                 .get_download_url(args.product.into(), args.platform.into(), version, build)
                 .await?;
             let filename = &build_info.filename;
-            let confirmation = Confirm::new()
-                .with_prompt(format!("Download {filename}?"))
-                .interact_opt()?;
-            match confirmation {
-                None => return Ok(()),
-                Some(inp) if !inp => return Ok(()),
-                _ => {}
+            let output = output_dir.join(filename);
+            if !overwrite && output.exists() {
+                anyhow::bail!("File already downloaded: {}", output.to_string_lossy());
+            }
+            if !auto_confirm {
+                let confirmation = Confirm::with_theme(&ColorfulTheme::default())
+                    .with_prompt(format!("Download {filename}?"))
+                    .interact_opt()?;
+                match confirmation {
+                    None => return Ok(()),
+                    Some(inp) if !inp => return Ok(()),
+                    _ => {}
+                }
             }
             let response = reqwest::get(build_info.download_url).await?;
             let mut stream = response.bytes_stream();
-            let mut file = tokio::fs::File::create("c:/Temp/houdini-install.exe").await?;
-            let total = build_info.size as usize;
-            let mut downloaded: usize = 0;
-            while let Some(item) = stream.next().await {
-                let chunk = item?;
-                downloaded += chunk.len();
-                file.write_all(&chunk).await?;
-                println!("Downloaded {downloaded}/{total}")
+            let pb = indicatif::ProgressBar::new(build_info.size >> 10);
+            // let mut stream = pb.wrap_stream(stream);
+            let mut file = tokio::fs::File::create(&output).await?;
+            while let Some(chunk) = stream.next().await {
+                let bytes = chunk?;
+                file.write_all(&bytes).await?;
+                pb.inc(bytes.len() as u64 >> 10);
             }
+            pb.finish();
+            println!("Downloaded: {}", output.to_string_lossy());
         }
         Commands::List {
             include_daily_builds,
