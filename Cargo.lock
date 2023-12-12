@@ -265,16 +265,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "downloader-api"
-version = "0.1.0"
-dependencies = [
- "reqwest",
- "serde",
- "serde-this-or-that",
- "serde_json",
-]
-
-[[package]]
 name = "encode_unicode"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -456,16 +446,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
-name = "houdini-downloader"
+name = "houdini-downloader-api"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde-this-or-that",
+ "serde_json",
+]
+
+[[package]]
+name = "houdl"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
  "ctrlc",
  "dialoguer",
- "downloader-api",
  "futures-util",
  "hex",
+ "houdini-downloader-api",
  "indicatif",
  "md-5",
  "owo-colors",

@@ -1,14 +1,16 @@
 [package]
-name = "houdini-downloader"
+name = "houdl"
 version = "0.1.0"
 edition = "2021"
+authors = ["Aleksei Rusev"]
+description = "Command line tool for downloading SideFx Houdini installers"
+license = "MIT"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 clap = { version = "4.4.11", features = ["derive", "env"] }
 tokio = { version = "1.35.0", features = ["rt", "macros"] }
-downloader-api = {path = "../downloader-api"}
+houdini-downloader-api = {path = "../api" }
 futures-util = "0.3.29"
 dialoguer = "0.11.0"
 indicatif = { version = "0.17.7", features = ["tokio", "futures"] }

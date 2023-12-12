@@ -1,18 +1,16 @@
-#![allow(unused)]
-#![allow(dead_code)]
-use anyhow::{anyhow, bail, Context, Result};
-use clap::{ArgAction, CommandFactory, Parser, Subcommand, ValueEnum};
+use anyhow::{bail, Context, Result};
+use clap::{Parser, Subcommand, ValueEnum};
 use dialoguer::{theme::ColorfulTheme, Confirm};
-use downloader_api::{ListBuildsParms, Platform, Product, SesiClient};
 use futures_util::StreamExt;
+use houdini_downloader_api::{Platform, Product, SesiClient};
 use indicatif::ProgressStyle;
 use md5::{Digest, Md5};
 use owo_colors::{AnsiColors, OwoColorize};
-use reqwest;
 use std::io::Write;
 use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
 
+/// Utility for downloading SideFX Houdini installers.
 #[derive(Debug, Parser)]
 struct App {
     #[command(subcommand)]
@@ -29,6 +27,7 @@ struct App {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
+    /// Download a particular build.
     Get {
         /// Product version [e.g. 19.5]
         #[arg(short, long)]
@@ -50,6 +49,7 @@ enum Commands {
         #[arg(long)]
         overwrite: bool,
     },
+    /// List available builds.
     List {
         /// By default, only production builds are listed.
         #[arg(short, long, default_value_t = false)]
@@ -96,19 +96,24 @@ impl From<PlatformArg> for Platform {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
-    ctrlc::set_handler(move || {
-        std::process::exit(0);
-    });
     let args: App = App::parse();
+
     if args.user_id.is_none() || args.user_secret.is_none() {
         bail!("SESI_USER_ID and SESI_USER_SECRET are required");
     }
+
+    ctrlc::set_handler(move || {
+        std::process::exit(0);
+    })
+    .context("Error setting up CTRL-C handler")?;
 
     // None variants were checked above
     let user_id = args.user_id.as_deref().unwrap();
     let user_secret = args.user_secret.as_deref().unwrap();
 
-    let client = SesiClient::new(user_id, user_secret).await?;
+    let client = SesiClient::new(user_id, user_secret)
+        .await
+        .context("Error encountered while trying to authorize with SideFX")?;
 
     match args.commands {
         Commands::Get {
@@ -119,8 +124,9 @@ async fn main() -> Result<()> {
             overwrite,
         } => {
             let build_info = client
-                .get_download_url(args.product.into(), args.platform.into(), version, build)
-                .await?;
+                .get_build_url(args.product.into(), args.platform.into(), version, build)
+                .await
+                .context("Error encountered while trying to get build info")?;
             let filename = &build_info.filename;
             let output = output_dir.join(filename);
             if !overwrite && output.exists() {
@@ -158,14 +164,14 @@ async fn main() -> Result<()> {
                 if let Ok(bytes) = chunk {
                     file.write_all(&bytes)
                         .await
-                        .context("Error writing to file")?;
+                        .context("Error writing to output file")?;
                     hash.update(&bytes);
                     pb.inc(bytes.len() as u64);
                 }
             }
             pb.finish_with_message(format!("Downloaded: {}", output.to_string_lossy()));
             let downloaded_bytes_hash = hex::encode(&hash.finalize()[..]);
-            if (downloaded_bytes_hash != build_info.hash) {
+            if downloaded_bytes_hash != build_info.hash {
                 eprintln!(
                     "{}",
                     "[warning]: Downloaded file hash is different from the build hash"
@@ -185,7 +191,8 @@ async fn main() -> Result<()> {
                     version,
                     !include_daily_builds,
                 )
-                .await?
+                .await
+                .context("Error encountered when trying to list available builds")?
                 .into_iter()
                 .enumerate()
             {
@@ -202,7 +209,7 @@ async fn main() -> Result<()> {
                     build.full_version(),
                     status,
                     build.release
-                );
+                )?;
             }
             drop(stdout);
         }

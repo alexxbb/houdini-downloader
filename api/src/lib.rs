@@ -1,15 +1,8 @@
-#![allow(unused)]
-#![allow(dead_code)]
-// pub use futures_util::{Stream, StreamExt};
 use reqwest::Client as HttpClient;
-use reqwest::{StatusCode, Url};
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
-use serde_this_or_that::as_u64;
-use std::collections::HashMap;
+use reqwest::StatusCode;
+use serde::{de::Error, Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::error::Error as StdError;
-use std::fmt::Display;
-use std::time::SystemTime;
 
 const ACCESS_TOKEN_URL: &str = "https://www.sidefx.com/oauth2/application_token";
 const ENDPOINT_URL: &str = "https://www.sidefx.com/api";
@@ -39,7 +32,7 @@ impl ApiError {
     }
 }
 
-impl Display for ApiError {
+impl std::fmt::Display for ApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let msg = match &self.inner.source {
             None => format!(
@@ -73,6 +66,12 @@ impl From<reqwest::Error> for ApiError {
     }
 }
 
+impl From<serde_json::Error> for ApiError {
+    fn from(value: serde_json::Error) -> Self {
+        ApiError::new(Kind::Decode, Some(value))
+    }
+}
+
 #[derive(Deserialize, Debug)]
 pub struct AccessToken {
     access_token: String,
@@ -98,20 +97,6 @@ pub enum Platform {
     Macos,
     #[serde(rename = "macosx_arm64")]
     MacosxArm64,
-}
-
-impl Platform {
-    fn from_build_str(platform: &str) -> Self {
-        if platform.starts_with("linux") {
-            Platform::Linux
-        } else if platform.starts_with("win64") {
-            Platform::Win64
-        } else if platform.starts_with("macosx_x86") {
-            Platform::Macos
-        } else {
-            Platform::MacosxArm64
-        }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -189,7 +174,7 @@ async fn get_access_token_and_expiry_time(
 
     let mut token: AccessToken = resp.json().await?;
 
-    token.expiry_time = SystemTime::now()
+    token.expiry_time = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs()
@@ -228,7 +213,7 @@ impl SesiClient {
         serde_json::from_value(json_value).map_err(|e| ApiError::new(Kind::Decode, Some(e)))
     }
 
-    pub async fn get_download_url(
+    pub async fn get_build_url(
         &self,
         product: Product,
         platform: Platform,
@@ -246,20 +231,6 @@ impl SesiClient {
         serde_json::from_value(json_value).map_err(|e| ApiError::new(Kind::Decode, Some(e)))
     }
 
-    // pub async fn download_stream(
-    //     &self,
-    //     product: Product,
-    //     platform: Platform,
-    //     version: impl Into<String>,
-    //     build: u64,
-    // ) -> Result<impl Stream<Item = reqwest::Result<Bytes>>, ApiError> {
-    //     let url = self
-    //         .get_download_url(product, platform, version, build)
-    //         .await?;
-    //     let response = self.client.get(url.download_url).send().await?;
-    //     Ok(response.bytes_stream())
-    // }
-
     async fn call_api(&self, endpoint: EndPoint) -> reqwest::Result<Value> {
         let (method, parms) = endpoint.method_and_parms();
         let parms = json!([method, [], parms]).to_string();
@@ -276,7 +247,7 @@ impl SesiClient {
 
 #[derive(Debug, Deserialize)]
 pub struct Build {
-    #[serde(deserialize_with = "as_u64")]
+    #[serde(deserialize_with = "parse_build_number")]
     pub build: u64,
     pub date: String, // TODO: Use chrono
     pub product: Product,
@@ -284,6 +255,13 @@ pub struct Build {
     pub release: String,
     pub status: String,
     pub version: String,
+}
+
+fn parse_build_number<'de, D: serde::Deserializer<'de>>(des: D) -> Result<u64, D::Error> {
+    let str_val = String::deserialize(des)?;
+    str_val
+        .parse()
+        .map_err(|_| Error::custom("build is not a number"))
 }
 
 impl Build {

@@ -1,7 +1,10 @@
 [package]
-name = "downloader-api"
+name = "houdini-downloader-api"
 version = "0.1.0"
 edition = "2021"
+authors = ["Aleksei Rusev"]
+description = "API for downloading SideFx Houdini installers"
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

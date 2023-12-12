@@ -2,6 +2,6 @@
 resolver = "2"
 
 members = [
-    "downloader-api",
-    "downloader-bin"
+    "api",
+    "cmd"
 ]
