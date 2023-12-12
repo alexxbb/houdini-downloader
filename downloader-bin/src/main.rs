@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 use anyhow::{anyhow, Result};
 use clap::{ArgAction, CommandFactory, Parser, Subcommand, ValueEnum};
+use dialoguer::Confirm;
 use downloader_api::{ListBuildsParms, Platform, Product, SesiClient};
 use futures_util::StreamExt;
 use owo_colors::{AnsiColors, OwoColorize};
@@ -94,6 +95,15 @@ async fn main() -> Result<()> {
             let build_info = client
                 .get_download_url(args.product.into(), args.platform.into(), version, build)
                 .await?;
+            let filename = &build_info.filename;
+            let confirmation = Confirm::new()
+                .with_prompt(format!("Download {filename}?"))
+                .interact_opt()?;
+            match confirmation {
+                None => return Ok(()),
+                Some(inp) if !inp => return Ok(()),
+                _ => {}
+            }
             let response = reqwest::get(build_info.download_url).await?;
             let mut stream = response.bytes_stream();
             let mut file = tokio::fs::File::create("c:/Temp/houdini-install.exe").await?;

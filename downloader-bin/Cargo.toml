@@ -10,7 +10,7 @@ clap = { version = "4.4.11", features = ["derive", "env"] }
 tokio = { version = "1.35.0", features = ["rt", "macros"] }
 downloader-api = {path = "../downloader-api"}
 futures-util = "0.3.29"
-#bytes = "1.5.0"
+dialoguer = "0.11.0"
 reqwest = { version = "0.11.22", features = ["stream"] }
 anyhow = "1.0.75"
 owo-colors = "4.0.0-rc.1"
