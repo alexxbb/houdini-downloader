@@ -93,6 +93,7 @@ async fn main() -> Result<()> {
             }
             bar.finish_with_message(format!("Downloaded: {}", output.to_string_lossy()));
             let downloaded_bytes_hash = hex::encode(&hash.finalize());
+            println!("Build md5 checksum: {}", &downloaded_bytes_hash.green());
             if downloaded_bytes_hash != build_info.hash {
                 eprintln!(
                     "{}",
