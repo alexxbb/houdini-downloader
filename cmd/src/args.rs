@@ -16,7 +16,7 @@ pub struct Args {
     pub user_secret: Option<String>,
     #[arg(long, global = true, value_enum, default_value_t = ProductArg::Houdini)]
     pub product: ProductArg,
-    #[arg(long, global = true, value_enum, default_value_t = PlatformArg::Linux)]
+    #[arg(long, global = true, value_enum, default_value_t = PlatformArg::default())]
     pub platform: PlatformArg,
 }
 
@@ -84,6 +84,22 @@ pub enum PlatformArg {
     Win64,
     Macos,
     MacosxArm64,
+}
+
+impl Default for PlatformArg {
+    fn default() -> Self {
+        if cfg!(target_os = "windows") {
+            PlatformArg::Win64
+        } else if cfg!(target_os = "linux") {
+            PlatformArg::Linux
+        } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+            PlatformArg::Macos
+        } else if cfg!(all(target_os = "macos", target_os = "aarch64")) {
+            PlatformArg::MacosxArm64
+        } else {
+            panic!("Unsupported platform");
+        }
+    }
 }
 
 impl From<ProductArg> for Product {
