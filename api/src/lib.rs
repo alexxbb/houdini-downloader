@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use reqwest::Client as HttpClient;
 use reqwest::StatusCode;
 use serde::{de::Error, Deserialize, Serialize};
@@ -202,7 +203,7 @@ impl SesiClient {
         version: impl Into<String>,
         only_production: bool,
     ) -> Result<Vec<Build>, ApiError> {
-        let json_value = self
+        let body = self
             .call_api(EndPoint::ListBuilds(ListBuildsParms {
                 product,
                 platform,
@@ -210,7 +211,7 @@ impl SesiClient {
                 only_production,
             }))
             .await?;
-        serde_json::from_value(json_value).map_err(|e| ApiError::new(Kind::Decode, Some(e)))
+        serde_json::from_slice(&body).map_err(|e| ApiError::new(Kind::Decode, Some(e)))
     }
 
     pub async fn get_build_url(
@@ -226,12 +227,13 @@ impl SesiClient {
             version: version.into(),
             build,
         };
-        let json_value = self.call_api(EndPoint::Download(parms)).await?;
+        let body = self.call_api(EndPoint::Download(parms)).await?;
 
-        serde_json::from_value(json_value).map_err(|e| ApiError::new(Kind::Decode, Some(e)))
+        serde_json::from_slice(&body)
+            .map_err(|_| ApiError::new(Kind::Decode, Some(String::from_utf8_lossy(&body))))
     }
 
-    async fn call_api(&self, endpoint: EndPoint) -> reqwest::Result<Value> {
+    async fn call_api(&self, endpoint: EndPoint) -> reqwest::Result<Bytes> {
         let (method, parms) = endpoint.method_and_parms();
         let parms = json!([method, [], parms]).to_string();
         self.client
@@ -240,7 +242,7 @@ impl SesiClient {
             .form(&[("json", parms)])
             .send()
             .await?
-            .json()
+            .bytes()
             .await
     }
 }

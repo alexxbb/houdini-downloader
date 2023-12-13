@@ -39,12 +39,12 @@ pub enum Commands {
         build: u64,
 
         /// Directory to save the downloaded file.
-        #[arg(short, long)]
+        #[arg(short, long, default_value_os_t = PathBuf::from("."))]
         output_dir: PathBuf,
 
-        /// Skip download confirmation question.
+        /// Auto-confirm download and hide progress bar.
         #[arg(short, long)]
-        auto_confirm: bool,
+        silent: bool,
 
         /// Overwrite if file exists in the output directory.
         #[arg(long)]

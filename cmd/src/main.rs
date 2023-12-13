@@ -42,7 +42,7 @@ async fn main() -> Result<()> {
             version,
             build,
             output_dir,
-            auto_confirm,
+            silent,
             overwrite,
         } => {
             let build_info = client
@@ -52,9 +52,10 @@ async fn main() -> Result<()> {
             let filename = &build_info.filename;
             let output = output_dir.join(filename);
             if !overwrite && output.exists() {
-                bail!("File already downloaded: {}", output.to_string_lossy());
+                eprintln!("File already downloaded: {}", output.to_string_lossy());
+                return Ok(());
             }
-            if !auto_confirm {
+            if !silent {
                 let confirmation = Confirm::with_theme(&ColorfulTheme::default())
                     .with_prompt(format!("Download {filename}?"))
                     .interact_opt()?;
@@ -68,16 +69,23 @@ async fn main() -> Result<()> {
                 .await
                 .context("Could not send GET download request")?;
             let mut stream = response.bytes_stream();
-            let bar = indicatif::ProgressBar::new(build_info.size);
-            bar.set_style(
-                ProgressStyle::default_bar()
-                    .template(
-                        "{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] \
+            let downloading_started_msg = format!("Downloading {}", filename);
+            let bar = if !silent {
+                let bar = indicatif::ProgressBar::new(build_info.size);
+                bar.set_style(
+                    ProgressStyle::default_bar()
+                        .template(
+                            "{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] \
                             {bytes}/{total_bytes} ({binary_bytes_per_sec}, {eta})",
-                    )?
-                    .progress_chars("#>-"),
-            );
-            bar.set_message(format!("Downloading {}", filename));
+                        )?
+                        .progress_chars("#>-"),
+                );
+                bar.set_message(downloading_started_msg);
+                Some(bar)
+            } else {
+                println!("{}", downloading_started_msg);
+                None
+            };
             let mut file = tokio::fs::File::create(&output)
                 .await
                 .context("Could not create file to save")?;
@@ -88,10 +96,14 @@ async fn main() -> Result<()> {
                         .await
                         .context("Error writing to output file")?;
                     hash.update(&bytes);
-                    bar.inc(bytes.len() as u64);
+                    if let Some(ref bar) = bar {
+                        bar.inc(bytes.len() as u64);
+                    }
                 }
             }
-            bar.finish_with_message(format!("Downloaded: {}", output.to_string_lossy()));
+            if let Some(bar) = bar {
+                bar.finish_with_message(format!("Downloaded: {}", output.to_string_lossy()));
+            }
             let downloaded_bytes_hash = hex::encode(&hash.finalize());
             println!("Build md5 checksum: {}", &downloaded_bytes_hash.green());
             if downloaded_bytes_hash != build_info.hash {
