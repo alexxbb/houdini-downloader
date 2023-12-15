@@ -105,7 +105,7 @@ pub struct ListBuildsParms {
     pub product: Product,
     pub platform: Platform,
     // TODO: Support version list
-    pub version: String,
+    pub version: Option<String>,
     pub only_production: bool,
 }
 
@@ -114,7 +114,7 @@ impl ListBuildsParms {
         ListBuildsParms {
             product: Product::Houdini,
             platform: Platform::Linux,
-            version: "19.5".to_string(),
+            version: None,
             only_production: true,
         }
     }
@@ -200,14 +200,14 @@ impl SesiClient {
         &self,
         product: Product,
         platform: Platform,
-        version: impl Into<String>,
+        version: Option<impl Into<String>>,
         only_production: bool,
     ) -> Result<Vec<Build>, ApiError> {
         let body = self
             .call_api(EndPoint::ListBuilds(ListBuildsParms {
                 product,
                 platform,
-                version: version.into(),
+                version: version.map(|t| t.into()),
                 only_production,
             }))
             .await?;

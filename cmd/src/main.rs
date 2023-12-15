@@ -9,7 +9,7 @@ use indicatif::ProgressStyle;
 use md5::{Digest, Md5};
 use owo_colors::{AnsiColors, OwoColorize};
 use std::io::Write;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWriteExt, BufWriter};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
@@ -68,7 +68,6 @@ async fn main() -> Result<()> {
             let response = reqwest::get(build_info.download_url)
                 .await
                 .context("Could not send GET download request")?;
-            let mut stream = response.bytes_stream();
             let downloading_started_msg = format!("Downloading {}", filename);
             let bar = if !silent {
                 let bar = indicatif::ProgressBar::new(build_info.size);
@@ -86,13 +85,16 @@ async fn main() -> Result<()> {
                 println!("{}", downloading_started_msg);
                 None
             };
-            let mut file = tokio::fs::File::create(&output)
+            let file = tokio::fs::File::create(&output)
                 .await
                 .context("Could not create file to save")?;
+            let mut file_buf = BufWriter::new(file);
+            let mut stream = response.bytes_stream();
             let mut hash = Md5::new();
             while let Some(chunk) = stream.next().await {
                 if let Ok(bytes) = chunk {
-                    file.write_all(&bytes)
+                    file_buf
+                        .write_all(&bytes)
                         .await
                         .context("Error writing to output file")?;
                     hash.update(&bytes);

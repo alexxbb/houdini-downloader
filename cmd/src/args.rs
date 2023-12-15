@@ -55,20 +55,24 @@ pub enum Commands {
         /// By default, only production builds are listed.
         #[arg(short, long, default_value_t = false)]
         include_daily_builds: bool,
-        /// Product version [e.g. 19.5]
+        /// Optional product version [e.g. 19.5]. By default all versions are listed.
         #[arg(short, long)]
-        version: String,
+        version: Option<String>,
     },
 }
 
 impl Commands {
+    /// Verify if version is major.minor. None consider valid
     pub fn is_version_valid(&self) -> bool {
-        // Verify if version is major.minor
-        let version = match self {
-            Commands::Get { version, .. } => version,
-            Commands::List { version, .. } => version,
+        let version_opt = match self {
+            Commands::Get { version, .. } => Some(version),
+            Commands::List { version, .. } => version.as_ref(),
         };
-        version.ends_with('.').not() && version.split('.').count() == 2
+        if let Some(version) = version_opt {
+            version.ends_with('.').not() && version.split('.').count() == 2
+        } else {
+            true
+        }
     }
 }
 
