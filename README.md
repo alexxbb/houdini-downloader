@@ -33,9 +33,9 @@ Downloading houdini-19.5.805-macosx_x86_64_clang12.0_11.dmg
 ⠠ [00:00:18] [####################>-----------------] 1.05 GiB/1.93 GiB (56.39 MiB/s, 16s)
 Build md5 checksum: f355bfe7271e0755908a3680f1f3c619
 ```
-To make sure the download is valid the md5 of the downloaded bytes is computed and verified against the one official build.
+To make sure the download is valid the md5 hash of the downloaded bytes is computed and verified.
 
-**(checksum can be found on the download page next to a build)**
+**(checksum can also be found on the download page next to a build)**
 
 ## Build & Run
 1. Have a Rust toolchain installed: https://rustup.rs/

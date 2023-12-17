@@ -1,8 +1,8 @@
 use bytes::Bytes;
-use reqwest::Client as HttpClient;
+use reqwest::Client as ReqwestClient;
 use reqwest::StatusCode;
 use serde::{de::Error, Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::json;
 use std::error::Error as StdError;
 
 const ACCESS_TOKEN_URL: &str = "https://www.sidefx.com/oauth2/application_token";
@@ -39,14 +39,6 @@ impl From<serde_json::Error> for ApiError {
     fn from(value: serde_json::Error) -> Self {
         ApiError::new(Box::new(value))
     }
-}
-
-#[derive(Deserialize, Debug)]
-pub struct AccessToken {
-    access_token: String,
-    expires_in: u32,
-    #[serde(default)]
-    expiry_time: u64,
 }
 
 #[non_exhaustive]
@@ -96,32 +88,16 @@ struct DownloadParms {
     build: u64,
 }
 
-#[derive(Debug)]
 enum EndPoint {
     ListBuilds(ListBuildsParms),
     Download(DownloadParms),
 }
 
-impl EndPoint {
-    fn method_and_parms(&self) -> (&'static str, Value) {
-        match self {
-            EndPoint::ListBuilds(parms) => (
-                "download.get_daily_builds_list",
-                serde_json::to_value(parms).unwrap(),
-            ),
-            EndPoint::Download(parms) => (
-                "download.get_daily_build_download",
-                serde_json::to_value(parms).unwrap(),
-            ),
-        }
-    }
-}
-
-async fn get_access_token_and_expiry_time(
-    client: &HttpClient,
+async fn get_access_token(
+    client: &ReqwestClient,
     user_id: &str,
     user_secret: &str,
-) -> Result<AccessToken, ApiError> {
+) -> Result<String, ApiError> {
     let resp = client
         .post(ACCESS_TOKEN_URL)
         .basic_auth(user_id, Some(user_secret))
@@ -139,26 +115,24 @@ async fn get_access_token_and_expiry_time(
         };
     }
 
-    let mut token: AccessToken = resp.json().await?;
+    #[derive(Deserialize)]
+    struct Token {
+        access_token: String,
+    }
+    let token: Token = resp.json().await?;
 
-    token.expiry_time = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
-        - 2
-        + token.expires_in as u64;
-    Ok(token)
+    Ok(token.access_token)
 }
 
 pub struct SesiClient {
-    token: AccessToken,
-    client: HttpClient,
+    token: String,
+    client: ReqwestClient,
 }
 
 impl SesiClient {
     pub async fn new(user_id: &str, user_secret: &str) -> Result<Self, ApiError> {
-        let client = HttpClient::new();
-        let token = get_access_token_and_expiry_time(&client, user_id, user_secret).await?;
+        let client = ReqwestClient::new();
+        let token = get_access_token(&client, user_id, user_secret).await?;
         Ok(SesiClient { token, client })
     }
 
@@ -199,11 +173,20 @@ impl SesiClient {
     }
 
     async fn call_api(&self, endpoint: EndPoint) -> reqwest::Result<Bytes> {
-        let (method, parms) = endpoint.method_and_parms();
+        let (method, parms) = match endpoint {
+            EndPoint::ListBuilds(parms) => (
+                "download.get_daily_builds_list",
+                serde_json::to_value(parms).unwrap(),
+            ),
+            EndPoint::Download(parms) => (
+                "download.get_daily_build_download",
+                serde_json::to_value(parms).unwrap(),
+            ),
+        };
         let parms = json!([method, [], parms]).to_string();
         self.client
             .post(ENDPOINT_URL)
-            .bearer_auth(&self.token.access_token)
+            .bearer_auth(&self.token)
             .form(&[("json", parms)])
             .send()
             .await?
