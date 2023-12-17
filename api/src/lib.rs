@@ -10,66 +10,34 @@ const ENDPOINT_URL: &str = "https://www.sidefx.com/api";
 
 pub(crate) type BoxError = Box<dyn StdError + Send + Sync>;
 
-#[derive(Debug, Eq, PartialEq)]
-pub enum Kind {
-    AuthError,
-    Request,
-    Decode,
-}
 #[derive(Debug)]
-struct Inner {
-    kind: Kind,
-    source: Option<BoxError>,
-}
-
-#[derive(Debug)]
-pub struct ApiError {
-    inner: Box<Inner>,
-}
-
-impl ApiError {
-    pub fn is_authorization_error(&self) -> bool {
-        self.inner.kind == Kind::AuthError
-    }
-}
+pub struct ApiError(BoxError);
 
 impl std::fmt::Display for ApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let msg = match &self.inner.source {
-            None => format!(
-                "Error Kind: {:?}. No error source available",
-                self.inner.kind
-            ),
-            Some(err) => err.to_string(),
-        };
-        f.write_str(&msg)
+        f.write_str(&format!("ApiError: {}", self.0))
     }
 }
 
 impl StdError for ApiError {}
 
 impl ApiError {
-    pub(crate) fn new<E>(kind: Kind, source: Option<E>) -> ApiError
+    pub(crate) fn new<E>(source: E) -> ApiError
     where
         E: Into<BoxError>,
     {
-        ApiError {
-            inner: Box::new(Inner {
-                kind,
-                source: source.map(Into::into),
-            }),
-        }
+        ApiError(source.into())
     }
 }
 impl From<reqwest::Error> for ApiError {
     fn from(value: reqwest::Error) -> Self {
-        ApiError::new(Kind::Request, Some(value))
+        ApiError(Box::new(value))
     }
 }
 
 impl From<serde_json::Error> for ApiError {
     fn from(value: serde_json::Error) -> Self {
-        ApiError::new(Kind::Decode, Some(value))
+        ApiError::new(Box::new(value))
     }
 }
 
@@ -163,13 +131,11 @@ async fn get_access_token_and_expiry_time(
     if !resp.status().is_success() {
         return match resp.status() {
             StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => Err(ApiError::new(
-                Kind::AuthError,
-                Some("Could not authorize, check user credentials.".to_string()),
+                "Could not authorize, check user credentials.".to_string(),
             )),
-            error_status => Err(ApiError::new(
-                Kind::Request,
-                Some(format!("Request error code: {error_status:?}")),
-            )),
+            error_status => Err(ApiError::new(format!(
+                "Request error code: {error_status:?}"
+            ))),
         };
     }
 
@@ -211,7 +177,7 @@ impl SesiClient {
                 only_production,
             }))
             .await?;
-        serde_json::from_slice(&body).map_err(|e| ApiError::new(Kind::Decode, Some(e)))
+        serde_json::from_slice(&body).map_err(|e| ApiError::new(e))
     }
 
     pub async fn get_build_url(
@@ -229,8 +195,7 @@ impl SesiClient {
         };
         let body = self.call_api(EndPoint::Download(parms)).await?;
 
-        serde_json::from_slice(&body)
-            .map_err(|_| ApiError::new(Kind::Decode, Some(String::from_utf8_lossy(&body))))
+        serde_json::from_slice(&body).map_err(|_| ApiError::new(String::from_utf8_lossy(&body)))
     }
 
     async fn call_api(&self, endpoint: EndPoint) -> reqwest::Result<Bytes> {
