@@ -140,12 +140,8 @@ async fn main() -> Result<()> {
                 };
                 writeln!(
                     stdout,
-                    "{i:>2}. Date: {}, Platform: {}, Version: {}, Status: {}, Release: {}",
-                    build.date,
-                    build.platform,
-                    build.full_version(),
-                    status,
-                    build.release
+                    "{i:>2}. Date: {}, Platform: {}, Version: {}.{}, Status: {}, Release: {}",
+                    build.date, build.platform, build.version, build.build, status, build.release
                 )?;
             }
         }

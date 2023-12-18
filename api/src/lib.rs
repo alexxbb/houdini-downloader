@@ -98,6 +98,37 @@ async fn get_access_token(
     user_id: &str,
     user_secret: &str,
 ) -> Result<String, ApiError> {
+    #[derive(Deserialize, Serialize)]
+    struct Token {
+        access_token: String,
+        // Lifespan of the token
+        expires_in: u64,
+        #[serde(default)]
+        // Time in seconds when the token expire
+        expires_at: u64,
+    }
+
+    fn time_now() -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    }
+    let token_file = dirs::cache_dir().map(|path| {
+        path.join("houdini.downloader")
+            .join("api")
+            .with_extension("token")
+    });
+
+    if let Some(token_file) = &token_file {
+        if let Ok(data) = std::fs::read(token_file) {
+            let token: Token = serde_json::from_slice(&data)?;
+            if time_now() < token.expires_at {
+                return Ok(token.access_token);
+            }
+        }
+    }
+
     let resp = client
         .post(ACCESS_TOKEN_URL)
         .basic_auth(user_id, Some(user_secret))
@@ -115,11 +146,17 @@ async fn get_access_token(
         };
     }
 
-    #[derive(Deserialize)]
-    struct Token {
-        access_token: String,
+    let mut token: Token = resp.json().await?;
+
+    if let Some(token_file) = &token_file {
+        let _ = std::fs::create_dir_all(token_file.parent().expect("parent must present"));
+        if let Ok(file) = std::fs::File::create(token_file) {
+            token.expires_at = time_now() + token.expires_in;
+            if let Err(e) = serde_json::to_writer(file, &token) {
+                eprintln!("Could not save token file {}", e)
+            }
+        }
     }
-    let token: Token = resp.json().await?;
 
     Ok(token.access_token)
 }
@@ -212,12 +249,6 @@ fn parse_build_number<'de, D: serde::Deserializer<'de>>(des: D) -> Result<u64, D
     str_val
         .parse()
         .map_err(|_| Error::custom("build is not a number"))
-}
-
-impl Build {
-    pub fn full_version(&self) -> String {
-        format!("{}.{}", self.version, self.build)
-    }
 }
 
 #[derive(Debug, Deserialize)]
