@@ -3,7 +3,7 @@ use houdini_downloader_api::{Platform, Product};
 use std::ops::Not;
 use std::path::PathBuf;
 
-/// Utility for downloading SideFX Houdini installers.
+/// Utility for downloading SideFX Houdini installers and ISO images.
 #[derive(Debug, Parser)]
 #[clap(disable_help_subcommand = true)]
 #[command(author, version)]
@@ -79,6 +79,7 @@ impl Commands {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
 pub enum ProductArg {
     Houdini,
+    HoudiniIso,
     HoudiniLauncher,
 }
 
@@ -110,6 +111,7 @@ impl From<ProductArg> for Product {
     fn from(arg: ProductArg) -> Self {
         match arg {
             ProductArg::Houdini => Product::Houdini,
+            ProductArg::HoudiniIso => Product::LauncherIso,
             ProductArg::HoudiniLauncher => Product::HoudiniLauncher,
         }
     }

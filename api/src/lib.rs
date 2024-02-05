@@ -48,6 +48,8 @@ pub enum Product {
     Houdini,
     #[serde(rename = "houdini-launcher")]
     HoudiniLauncher,
+    #[serde(rename = "launcher-iso")]
+    LauncherIso,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
